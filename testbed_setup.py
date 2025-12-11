@@ -283,7 +283,7 @@ def main():
 
     # hyperperiod-aware solver; num_instances=2 => horizon 2 * lcm(periods)
     sched0 = smt_solver.build_and_solve(
-        app, platform, num_instances=2, optimize_makespan=True
+        app, platform, num_instances=1, optimize_makespan=True
     )
     print_schedule("Schedule WITHOUT network latency", sched0)
 
@@ -298,7 +298,7 @@ def main():
     # ---------- Second solve: include network latency in precedence ----------
     # Now app.streams have nonzero latency; re-run SMT
     sched1 = smt_solver.build_and_solve(
-        app, platform, num_instances=2, optimize_makespan=True
+        app, platform, num_instances=1, optimize_makespan=True
     )
     print_schedule("Schedule WITH network latency", sched1)
 

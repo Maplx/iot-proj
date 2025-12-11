@@ -413,6 +413,31 @@ def build_and_solve(
 # ---------------------------------------------------------------------------
 # GCL export
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# GCL export
+# ---------------------------------------------------------------------------
+
+# Hardware constraint: maximum allowed interval per GCL entry (ns)
+SUPPORTED_INTERVAL_MAX_NS = 20_971_200  # from testbed error "SupportedIntervalMax"
+
+
+def _split_interval_to_supported(
+    duration_ns: int,
+    mask: int,
+    max_ns: int = SUPPORTED_INTERVAL_MAX_NS,
+) -> List[Tuple[int, int]]:
+    """
+    Split a (duration_ns, mask) pair into multiple entries so that
+    each duration <= max_ns. Keeps the same mask for all pieces.
+    """
+    parts: List[Tuple[int, int]] = []
+    remaining = duration_ns
+    while remaining > max_ns:
+        parts.append((max_ns, mask))
+        remaining -= max_ns
+    if remaining > 0:
+        parts.append((remaining, mask))
+    return parts
 
 def _build_gcl_for_link(
     events: List[Tuple[int, int, int]],
@@ -461,7 +486,6 @@ def _build_gcl_for_link(
     # convert to ns
     return [(dur * time_unit_ns, mask) for dur, mask in gcl_entries]
 
-
 def export_gcl_files(
     stream_hops: List[StreamHopSchedule],
     horizon: int,
@@ -472,6 +496,10 @@ def export_gcl_files(
     Export one GCL file per directed link based on stream_hops.
 
     Each line: 'sgs <time_ns> 0x<mask>'.
+
+    Ensures that each GCL entry's time_ns does NOT exceed
+    SUPPORTED_INTERVAL_MAX_NS (splits large intervals into
+    multiple smaller entries with the same mask).
 
     Returns:
         dict[link_id -> path]
@@ -488,6 +516,7 @@ def export_gcl_files(
     gcl_files: Dict[str, str] = {}
 
     for link_id, events in events_by_link.items():
+        # gcl in solver units -> list[(dur_ns, mask)]
         gcl = _build_gcl_for_link(events, horizon=horizon, time_unit_ns=time_unit_ns)
 
         # file name: e.g., "gcl_L_ES0_SW0.cfg"
@@ -496,10 +525,14 @@ def export_gcl_files(
 
         with open(fpath, "w", encoding="utf-8") as f:
             for dur_ns, mask in gcl:
-                # EXACT requested format:
-                #   sgs time(ns) List_of_gates
-                # Example: sgs 4800 0x01
-                f.write(f"sgs {dur_ns} 0x{mask:02x}\n")
+                # Split any interval that exceeds HW limit
+                for part_dur_ns, part_mask in _split_interval_to_supported(
+                    dur_ns, mask, SUPPORTED_INTERVAL_MAX_NS
+                ):
+                    # EXACT requested format:
+                    #   sgs time(ns) List_of_gates
+                    # Example: sgs 4800 0x01
+                    f.write(f"sgs {part_dur_ns} 0x{part_mask:02x}\n")
 
         gcl_files[link_id] = fpath
 
